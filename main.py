@@ -71,41 +71,59 @@ def transcribe_audio(audio_path: str, num_speakers: int, language: str) -> list[
 
     print(segments)
 
-    flags = diarize_audio(audio_path, num_speakers)
+    flags = __diarize_audio(audio_path, num_speakers)
 
     print('Flags')
     print(flags)
 
     # Map diarization speaker flags to Whisper transcription segments
-    transcription_segments = map_sentences_to_speakers(segments, flags)
+    transcription_segments = __map_sentences_to_speakers(segments, flags)
 
     print(transcription_segments)
 
     # Organize the transcription by speaker
-    organized_segments = organize_by_speaker(transcription_segments)
+    organized_segments = __organize_by_speaker(transcription_segments)
     print(organized_segments)
 
     return organized_segments
 
 
-def diarize_audio(audio_path: str, num_speakers: int) -> list[int]:
+def write_transcript(segments: list[Segment], output_path: str) -> None:
+    """
+    Write the transcription segments to the console and a text file. Each segment is printed with the speaker ID and text. The output file will contain the same information. The output file is opened in the default text editor after writing.
+    """
+
+    for segment in segments:
+        print(f'Speaker {segment.speaker_id} : {segment.text}')
+
+    unique_speakers = len(set([segment.speaker_id for segment in segments]))
+    print(f'In total we have {len(segments)} segments and {unique_speakers} unique speakers')
+
+    with open(output_path, 'w', encoding='utf-8') as file:
+        for segment in segments:
+            file.write(f'Speaker {segment.speaker_id} : {segment.text}\n\n')
+
+    os.startfile(output_path)  # open the file in the default file editor
+
+
+def __diarize_audio(audio_path: str, num_speakers: int) -> list[int]:
     """
     Perform speaker diarization on the audio file. The function returns a list of speaker IDs for fixed-duration segments. The speaker IDs are integers starting from 0. The function also detects silence periods in the audio file which are represented by a speaker ID of -1.
     """
 
     # Detect silence periods
-    silence_periods = detect_silence(audio_path)
+    silence_periods = __detect_silence(audio_path)
 
     [flags, classes, accuracy] = aS.speaker_diarization(audio_path, num_speakers, plot_res=False)
     flags = [int(flag) for flag in flags]
 
     # Adjust flags based on silence
-    adjusted_flags = adjust_flags_for_silence(flags, silence_periods)
+    adjusted_flags = __adjust_flags_for_silence(flags, silence_periods)
 
     return adjusted_flags
 
 
-def detect_silence(audio_path: str, smoothing_filter_size: int = 100) -> list[tuple[float, float]]:
+def __detect_silence(audio_path: str, smoothing_filter_size: int = 100) -> list[tuple[float, float]]:
     """
     Detects silence periods in an audio file.
 
@@ -158,7 +176,7 @@ def detect_silence(audio_path: str, smoothing_filter_size: int = 100) -> list[tu
     return silent_periods
 
 
-def adjust_flags_for_silence(flags: list[int], silence_periods: list[tuple[float, float]]) -> list[int]:
+def __adjust_flags_for_silence(flags: list[int], silence_periods: list[tuple[float, float]]) -> list[int]:
     """
     Insert silence periods into the speaker flags array. This function adjusts the speaker flags array based on the identified silence periods. The speaker flags array is a list of speaker IDs for fixed-duration segments. The silence periods are represented by a speaker ID of -1.
     :param flags: List of speaker IDs from diarization for fixed-duration segments
@@ -176,7 +194,7 @@ def adjust_flags_for_silence(flags: list[int], silence_periods: list[tuple[float
     return adjusted_flags
 
 
-def split_text_into_sentences(text: str) -> list[str]:
+def __split_text_into_sentences(text: str) -> list[str]:
     """
     Simple function to split text into sentences based on punctuation.
     This is a naive implementation and can be replaced with more sophisticated NLP tools.
@@ -189,7 +207,7 @@ def split_text_into_sentences(text: str) -> list[str]:
     return sentences
 
 
-def get_segment_flags(flags: list[int], start_time: float, end_time: float) -> list[int]:
+def __get_segment_flags(flags: list[int], start_time: float, end_time: float) -> list[int]:
     """
     Get speaker flags for a segment based on the start and end times. Silences (represented by -1) are filtered out.
     :param flags: List of speaker IDs from diarization for fixed-duration segments
@@ -205,7 +223,7 @@ def get_segment_flags(flags: list[int], start_time: float, end_time: float) -> l
     return [flag for flag in segment_flags if flag != -1]
 
 
-def map_sentences_to_speakers(transcription_segments: list[Segment], flags: list[int]) -> list[Segment]:
+def __map_sentences_to_speakers(transcription_segments: list[Segment], flags: list[int]) -> list[Segment]:
     """
     Map sentences to speakers based on the speaker diarization. This function splits segments with mixed speakers into sentences and assigns the most common speaker ID to each sentence. The function returns a list of Segments with proper speaker IDs for each sentence.
     :param transcription_segments: List of Segments with 'start', 'end', 'text'
@@ -214,7 +232,7 @@ def map_sentences_to_speakers(transcription_segments: list[Segment], flags: list
     """
     result_segments: list[Segment] = []
     for segment in transcription_segments:
-        segment_flags = get_segment_flags(flags, segment.start, segment.end)
+        segment_flags = __get_segment_flags(flags, segment.start, segment.end)
 
         if not segment_flags or len(set(segment_flags)) == 1:
             # Segment has a unanimous speaker (or silence), keep it as is
@@ -223,7 +241,7 @@ def map_sentences_to_speakers(transcription_segments: list[Segment], flags: list
             result_segments.append(segment)
         else:
             # Segment has mixed speakers, split into sentences
-            sentences = split_text_into_sentences(segment.text)
+            sentences = __split_text_into_sentences(segment.text)
 
             sentence_length_prefix_sum = sum(len(sentence) for sentence in sentences)
 
@@ -234,7 +252,7 @@ def map_sentences_to_speakers(transcription_segments: list[Segment], flags: list
                 sentence_start_time = segment.start + i * sentence_duration
                 sentence_end_time = sentence_start_time + sentence_duration
 
-                sentence_flags = get_segment_flags(flags, sentence_start_time, sentence_end_time)
+                sentence_flags = __get_segment_flags(flags, sentence_start_time, sentence_end_time)
                 most_common_speaker = max(set(sentence_flags), key=sentence_flags.count) if sentence_flags else None
 
                 result_segments.append(
@@ -251,7 +269,7 @@ def map_sentences_to_speakers(transcription_segments: list[Segment], flags: list
     return result_segments
 
 
-def organize_by_speaker(transcription_segments: list[Segment]) -> list[Segment]:
+def __organize_by_speaker(transcription_segments: list[Segment]) -> list[Segment]:
     """
     Organize the transcription segments by speaker. This function groups consecutive segments by the same speaker into a single segment. This means that consecutive segments by the same speaker are merged into a single segment and the text is concatenated. The output will therefore contain fewer segments than the input and never have consecutive segments by the same speaker.
     :param transcription_segments: List of Segments
@@ -286,24 +304,6 @@ def organize_by_speaker(transcription_segments: list[Segment]) -> list[Segment]:
         organized_segments.append(current_segment)
 
     return organized_segments
-
-
-def write_transcript(segments: list[Segment], output_path: str) -> None:
-    """
-    Write the transcription segments to the console and a text file. Each segment is printed with the speaker ID and text. The output file will contain the same information. The output file is opened in the default text editor after writing.
-    """
-
-    for segment in segments:
-        print(f'Speaker {segment.speaker_id} : {segment.text}')
-
-    unique_speakers = len(set([segment.speaker_id for segment in segments]))
-    print(f'In total we have {len(segments)} segments and {unique_speakers} unique speakers')
-
-    with open(output_path, 'w', encoding='utf-8') as file:
-        for segment in segments:
-            file.write(f'Speaker {segment.speaker_id} : {segment.text}\n\n')
-
-    os.startfile(output_path)  # open the file in the default file editor
 
 
 if __name__ == '__main__':
