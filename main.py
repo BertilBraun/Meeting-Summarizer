@@ -1,15 +1,14 @@
-from dataclasses import dataclass
 import os
+import whisper
+import numpy as np
+from dataclasses import dataclass
 from moviepy.editor import VideoFileClip
 from pyAudioAnalysis import audioBasicIO
 from pyAudioAnalysis import audioSegmentation as aS
 from pyAudioAnalysis import ShortTermFeatures as sF
-import numpy as np
-import whisper
 
 
 AS_SEGMENT_DURATION = 0.1  # Duration of each segment in the speaker diarization, in seconds
-AUDIO_PATH = 'audiofile.wav'  # Path to the audio file
 TRANSCRIPT_PATH = 'transcript.txt'  # Path to the transcript file
 
 
@@ -29,17 +28,33 @@ def transcribe_video(video_path: str, num_speakers: int, language: str) -> list[
     :param language: Language of the audio file
     :return: List of Segments with 'start', 'end', 'text', 'speaker_id'
     """
+    tmp_audio_path = 'audiofile.wav'  # Path to the temporary audio file
 
     # Convert video to audio using moviepy
-    print(f'Converting {video_path} to {AUDIO_PATH}')
+    print(f'Converting {video_path} to {tmp_audio_path}')
     video = VideoFileClip(video_path)
     print(f'Loaded video {video_path}')
     if video.audio is None:
         raise ValueError('Video has no audio')
 
-    video.audio.write_audiofile(AUDIO_PATH, codec='pcm_s16le', fps=44100, nbytes=2)
+    video.audio.write_audiofile(tmp_audio_path, codec='pcm_s16le', fps=44100, nbytes=2)
     print('Converted video to audio')
 
+    segments = transcribe_audio(tmp_audio_path, num_speakers, language)
+
+    os.remove(tmp_audio_path)
+
+    return segments
+
+
+def transcribe_audio(audio_path: str, num_speakers: int, language: str) -> list[Segment]:
+    """
+    Transcribe the audio file to text. The function performs speaker diarization on the audio file and transcribes the audio to text using the Whisper model. The function returns a list of Segments with 'start', 'end', 'text', 'speaker_id'. The 'speaker_id' is an integer representing the speaker ID for the segment. These segments should represent the dialogue as accurately as possible, with each segment containing the text spoken by a single speaker and the next segment containing the text spoken by another speaker. The speaker ID should be unique for each speaker and should be consistent throughout the transcription.
+    :param audio_path: Path to the audio file
+    :param num_speakers: Number of speakers in the audio file
+    :param language: Language of the audio file
+    :return: List of Segments with 'start', 'end', 'text', 'speaker_id'
+    """
     # Load the Whisper model (automatically downloads the model if it's the first time)
     print('Loading model')
     model = whisper.load_model('medium')
@@ -47,7 +62,7 @@ def transcribe_video(video_path: str, num_speakers: int, language: str) -> list[
 
     # Transcribe the audio to German
     print('Transcribing audio')
-    result = model.transcribe(AUDIO_PATH, language=language, verbose=True)
+    result = model.transcribe(audio_path, language=language, verbose=True)
     print('Transcribed audio')
 
     segments = []
@@ -56,7 +71,7 @@ def transcribe_video(video_path: str, num_speakers: int, language: str) -> list[
 
     print(segments)
 
-    flags = diarize_audio(AUDIO_PATH, num_speakers)
+    flags = diarize_audio(audio_path, num_speakers)
 
     print('Flags')
     print(flags)
@@ -69,8 +84,6 @@ def transcribe_video(video_path: str, num_speakers: int, language: str) -> list[
     # Organize the transcription by speaker
     organized_segments = organize_by_speaker(transcription_segments)
     print(organized_segments)
-
-    os.remove(AUDIO_PATH)
 
     return organized_segments
 
