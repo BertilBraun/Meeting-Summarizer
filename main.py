@@ -1,11 +1,6 @@
 import os
-import whisper
 import numpy as np
 from dataclasses import dataclass
-from moviepy.editor import VideoFileClip
-from pyAudioAnalysis import audioBasicIO
-from pyAudioAnalysis import audioSegmentation as aS
-from pyAudioAnalysis import ShortTermFeatures as sF
 
 
 AS_SEGMENT_DURATION = 0.1  # Duration of each segment in the speaker diarization, in seconds
@@ -28,6 +23,8 @@ def transcribe_video(video_path: str, num_speakers: int, language: str) -> list[
     :param language: Language of the audio file
     :return: List of Segments with 'start', 'end', 'text', 'speaker_id'
     """
+    from moviepy.editor import VideoFileClip
+
     tmp_audio_path = 'audiofile.wav'  # Path to the temporary audio file
 
     # Convert video to audio using moviepy
@@ -55,6 +52,8 @@ def transcribe_audio(audio_path: str, num_speakers: int, language: str) -> list[
     :param language: Language of the audio file
     :return: List of Segments with 'start', 'end', 'text', 'speaker_id'
     """
+    import whisper
+
     # Load the Whisper model (automatically downloads the model if it's the first time)
     print('Loading model')
     model = whisper.load_model('medium')
@@ -110,11 +109,12 @@ def __diarize_audio(audio_path: str, num_speakers: int) -> list[int]:
     """
     Perform speaker diarization on the audio file. The function returns a list of speaker IDs for fixed-duration segments. The speaker IDs are integers starting from 0. The function also detects silence periods in the audio file which are represented by a speaker ID of -1.
     """
+    from pyAudioAnalysis.audioSegmentation import speaker_diarization
 
     # Detect silence periods
     silence_periods = __detect_silence(audio_path)
 
-    [flags, classes, accuracy] = aS.speaker_diarization(audio_path, num_speakers, plot_res=False)
+    [flags, classes, accuracy] = speaker_diarization(audio_path, num_speakers, plot_res=False)
     flags = [int(flag) for flag in flags]
 
     # Adjust flags based on silence
@@ -131,15 +131,18 @@ def __detect_silence(audio_path: str, smoothing_filter_size: int = 100) -> list[
     :param smoothing_filter_size: Size of the smoothing filter applied to energy signal.
     :return: A list of tuples representing silent periods (start_time, end_time).
     """
+    from pyAudioAnalysis.audioBasicIO import read_audio_file, stereo_to_mono
+    from pyAudioAnalysis.ShortTermFeatures import feature_extraction
+
     # Extract short-term features
-    [fs, x] = audioBasicIO.read_audio_file(audio_path)
-    x = audioBasicIO.stereo_to_mono(x)  # Convert to mono if stereo
+    [fs, x] = read_audio_file(audio_path)
+    x = stereo_to_mono(x)  # Convert to mono if stereo
 
     # Calculate frame length and step size in samples
     frame_length_samples = int(0.050 * fs)  # 50 ms frame
     frame_step_samples = int(0.025 * fs)  # 25 ms step
 
-    features, f_names = sF.feature_extraction(x, fs, frame_length_samples, frame_step_samples)
+    features, f_names = feature_extraction(x, fs, frame_length_samples, frame_step_samples)
 
     # Find the index of the energy feature
     energy_index = f_names.index('energy')
