@@ -93,14 +93,14 @@ def write_transcript(segments: list[Segment], output_path: str) -> None:
     """
 
     for segment in segments:
-        print(f'Speaker {segment.speaker_id} : {segment.text}')
+        print(f'Speaker {segment.speaker_id} ({segment.start:.2f}-{segment.end:.2f}): {segment.text}')
 
     unique_speakers = len(set([segment.speaker_id for segment in segments]))
     print(f'In total we have {len(segments)} segments and {unique_speakers} unique speakers')
 
     with open(output_path, 'w', encoding='utf-8') as file:
         for segment in segments:
-            file.write(f'Speaker {segment.speaker_id} : {segment.text}\n\n')
+            file.write(f'Speaker {segment.speaker_id} ({segment.start:.2f}-{segment.end:.2f}): {segment.text}\n\n')
 
     os.startfile(output_path)  # open the file in the default file editor
 
@@ -330,6 +330,7 @@ if __name__ == '__main__':
         speaker_name_mapping[speaker] = name
 
     for segment in transcription_segments:
-        segment.speaker_id = speaker_name_mapping[segment.speaker_id]
+        if segment.speaker_id is not None:
+            segment.speaker_id = speaker_name_mapping[segment.speaker_id]
 
     write_transcript(transcription_segments, TRANSCRIPT_PATH)
